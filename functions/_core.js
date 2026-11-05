@@ -156,21 +156,33 @@ function func_dec(idx) {
   return runtimeHeader + "\n" + output;
 }
 
-export async function deployWorker({ accountId, apiToken, workerName, scriptUrl, d1Name, bindingName, kvName, kvBindingName, enableObfuscation, recreateWorker, customDomain }) {
-  if (!accountId || !apiToken || !workerName || !scriptUrl) {
-    throw new Error("فیلدهای اجباری (Account ID، Token، نام ورکر و آدرس سورس) ناقص هستند.");
+export async function deployWorker({ accountId, apiToken, workerName, scriptUrl, scriptContent, d1Name, bindingName, kvName, kvBindingName, enableObfuscation, recreateWorker, customDomain }) {
+  const hasScriptContent = scriptContent !== undefined && scriptContent !== null;
+  if (!accountId || !apiToken || !workerName || (!scriptUrl && !hasScriptContent)) {
+    throw new Error("فیلدهای اجباری (Account ID، Token، نام ورکر و آدرس یا فایل سورس) ناقص هستند.");
   }
 
   const cfHeaders = { Authorization: `Bearer ${apiToken}` };
 
-  // ۱. دریافت فایل سورس
-  const scriptRes = await fetch(scriptUrl, {
-    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PagesDeployer/1.0" },
-  });
-  if (!scriptRes.ok) {
-    throw new Error(`خطا در دانلود سورس: ${scriptRes.status} ${scriptRes.statusText}`);
+  // ۱. استفاده از فایل محلی یا دریافت سورس از آدرس
+  let workerScript;
+  if (hasScriptContent) {
+    if (typeof scriptContent !== "string") {
+      throw new Error("محتوای فایل سورس باید متن جاوااسکریپت باشد.");
+    }
+    workerScript = scriptContent;
+  } else {
+    const scriptRes = await fetch(scriptUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PagesDeployer/1.0" },
+    });
+    if (!scriptRes.ok) {
+      throw new Error(`خطا در دانلود سورس: ${scriptRes.status} ${scriptRes.statusText}`);
+    }
+    workerScript = await scriptRes.text();
   }
-  let workerScript = await scriptRes.text();
+  if (!workerScript.trim()) {
+    throw new Error("فایل سورس ورکر خالی است.");
+  }
 
   // ۲. مبهم‌سازی در صورت درخواست
   if (enableObfuscation) {

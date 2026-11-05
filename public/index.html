@@ -133,7 +133,7 @@
             <button type="button" onclick="selectPreset('custom')" id="btn-preset-custom" class="p-2.5 rounded-xl border border-slate-800 bg-slate-950 hover:border-orange-500/60 transition text-center flex flex-col items-center justify-center gap-1 cursor-pointer">
               <span class="text-base">🛠️</span>
               <span class="text-xs font-bold text-slate-200">سفارشی</span>
-              <span class="text-[9px] text-slate-500">لینک دلخواه</span>
+              <span class="text-[9px] text-slate-500">لینک یا فایل دلخواه</span>
             </button>
           </div>
         </div>
@@ -147,10 +147,29 @@
           <p class="text-[11px] text-slate-500 mt-1">💡 برای آپدیت یک ورکر موجود، کافیست نام ورکر قبلی را وارد کنید.</p>
         </div>
 
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1">آدرس مستقیم سورس کد ورکر (Direct Raw URL) *</label>
-          <input type="url" id="scriptUrl" dir="ltr" required placeholder="https://raw.githubusercontent.com/.../worker.js" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm focus:border-orange-500 focus:outline-none text-left" />
-        </div>
+        <fieldset class="space-y-3">
+          <legend class="text-xs font-medium text-slate-400 mb-2">سورس کد ورکر *</legend>
+          <div class="flex flex-wrap gap-4 text-xs text-slate-300">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="sourceType" id="sourceTypeUrl" value="url" checked onchange="setSourceType('url')" class="accent-orange-500" />
+              آدرس مستقیم (URL)
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="sourceType" id="sourceTypeFile" value="file" onchange="setSourceType('file')" class="accent-orange-500" />
+              آپلود فایل از دستگاه
+            </label>
+          </div>
+          <div id="scriptUrlFields">
+            <label for="scriptUrl" class="block text-xs font-medium text-slate-400 mb-1">آدرس مستقیم سورس کد ورکر (Direct Raw URL) *</label>
+            <input type="url" id="scriptUrl" dir="ltr" required placeholder="https://raw.githubusercontent.com/.../worker.js" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm focus:border-orange-500 focus:outline-none text-left" />
+          </div>
+          <div id="scriptFileFields" class="hidden">
+            <label for="scriptFile" class="block text-xs font-medium text-slate-400 mb-1">فایل جاوااسکریپت ورکر (.js یا .mjs) *</label>
+            <input type="file" id="scriptFile" dir="ltr" accept=".js,.mjs" disabled onchange="updateScriptFileInfo()" aria-describedby="scriptFileHelp scriptFileInfo" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-300 focus:border-orange-500 focus:outline-none file:mr-3 file:rounded-lg file:border-0 file:bg-orange-500/10 file:px-3 file:py-1.5 file:text-orange-400 file:cursor-pointer" />
+            <p id="scriptFileHelp" class="text-[11px] text-slate-500 mt-1">فایل worker.js را از دستگاه انتخاب کنید؛ نیازی به لینک Raw یا آپلود جداگانه نیست.</p>
+            <p id="scriptFileInfo" dir="auto" aria-live="polite" class="text-[11px] text-slate-400 mt-1 break-all"></p>
+          </div>
+        </fieldset>
 
         <!-- فیلد دامنه اختصاصی به همراه راهنمای کامل -->
         <div class="space-y-2 pt-1">
@@ -264,6 +283,10 @@
           <div class="flex justify-between py-1 border-b border-slate-900">
             <span class="text-slate-500">نام ورکر:</span>
             <span id="reviewWorkerName" class="font-mono text-orange-400">-</span>
+          </div>
+          <div class="flex justify-between gap-3 py-1 border-b border-slate-900">
+            <span class="text-slate-500 shrink-0">سورس ورکر:</span>
+            <span id="reviewSource" dir="ltr" class="font-mono text-slate-300 text-left break-all">-</span>
           </div>
           <div class="flex justify-between py-1 border-b border-slate-900">
             <span class="text-slate-500">وضعیت مبهم‌سازی (Obfuscation):</span>
@@ -690,9 +713,62 @@
       }
     };
 
+    let selectedPreset = 'nahan';
+
+    function setSourceType(type) {
+      const isFile = type === 'file';
+      document.getElementById('sourceTypeUrl').checked = !isFile;
+      document.getElementById('sourceTypeFile').checked = isFile;
+      document.getElementById('scriptUrlFields').classList.toggle('hidden', isFile);
+      document.getElementById('scriptFileFields').classList.toggle('hidden', !isFile);
+      document.getElementById('scriptUrl').required = !isFile;
+      document.getElementById('scriptUrl').disabled = isFile;
+      document.getElementById('scriptFile').required = isFile;
+      document.getElementById('scriptFile').disabled = !isFile;
+      updateObfuscationState();
+    }
+
+    function getScriptFileError(file) {
+      if (!file) return 'لطفاً فایل سورس ورکر را از دستگاه انتخاب کنید.';
+      if (!/\.(js|mjs)$/i.test(file.name)) return 'لطفاً یک فایل جاوااسکریپت با پسوند .js یا .mjs انتخاب کنید.';
+      if (file.size === 0) return 'فایل سورس ورکر خالی است.';
+      return '';
+    }
+
+    function updateScriptFileInfo() {
+      const input = document.getElementById('scriptFile');
+      const file = input.files[0];
+      const error = getScriptFileError(file);
+      input.setCustomValidity(error);
+      document.getElementById('scriptFileInfo').textContent = file
+        ? (error || `${file.name} (${file.size.toLocaleString('fa-IR')} بایت)`)
+        : '';
+    }
+
+    async function getWorkerSource() {
+      if (document.getElementById('sourceTypeFile').checked) {
+        const file = document.getElementById('scriptFile').files[0];
+        const error = getScriptFileError(file);
+        if (error) throw new Error(error);
+        let scriptContent;
+        try {
+          scriptContent = await file.text();
+        } catch {
+          throw new Error('خواندن فایل سورس ممکن نشد. فایل را دوباره انتخاب کنید.');
+        }
+        if (!scriptContent.trim()) throw new Error('فایل سورس ورکر خالی است.');
+        return { scriptContent };
+      }
+      const input = document.getElementById('scriptUrl');
+      if (!input.checkValidity()) throw new Error('لطفاً آدرس مستقیم سورس ورکر را وارد کنید.');
+      return { scriptUrl: input.value.trim() };
+    }
+
     function selectPreset(type) {
       const p = PRESETS[type];
       if (!p) return;
+      selectedPreset = type;
+      setSourceType('url');
 
       // هایلایت دکمه‌ها
       ['nahan', 'nahanmini', 'zeus', 'custom'].forEach(t => {
@@ -714,14 +790,26 @@
       document.getElementById('bindingName').value = p.binding;
       document.getElementById('recreateWorker').checked = p.recreate;
       document.getElementById('enableD1').checked = p.enableD1;
+      document.getElementById('enableObfuscation').checked = p.obfuscate;
+      updateObfuscationState();
 
-      // قفل کردن مبهم‌سازی برای ناهان (چون از پیش انکود شده است)
+      // اگر روی سفارشی کلیک شد، نام دیتابیس خالی شود
+      if (type === 'custom') {
+        document.getElementById('d1Name').value = '';
+      }
+
+      toggleD1Fields();
+    }
+
+    function updateObfuscationState() {
+      // فقط سورس رسمی نهان از قبل مبهم‌سازی شده است؛ فایل محلی ممکن است متفاوت باشد.
+      const isNahanUrl = selectedPreset === 'nahan' && document.getElementById('sourceTypeUrl').checked;
       const obfCheckbox = document.getElementById('enableObfuscation');
       const nahanBadge = document.getElementById('nahanObfBadge');
       const obfSubtext = document.getElementById('obfSubtext');
       const obfLabel = document.getElementById('obfuscationLabel');
 
-      if (type === 'nahan') {
+      if (isNahanUrl) {
         obfCheckbox.checked = false;
         obfCheckbox.disabled = true;
         nahanBadge.classList.remove('hidden');
@@ -729,18 +817,10 @@
         obfLabel.classList.add('opacity-80', 'cursor-not-allowed');
       } else {
         obfCheckbox.disabled = false;
-        obfCheckbox.checked = p.obfuscate;
         nahanBadge.classList.add('hidden');
         obfSubtext.innerText = 'رمزنگاری رشته‌ها با XOR/Base64 برای جلوگیری از خوانده‌شدن سورس کد';
         obfLabel.classList.remove('opacity-80', 'cursor-not-allowed');
       }
-      
-      // اگر روی سفارشی کلیک شد، نام دیتابیس خالی شود
-      if (type === 'custom') {
-        document.getElementById('d1Name').value = '';
-      }
-      
-      toggleD1Fields();
     }
 
     // --- بارگذاری اولیه اطلاعات ---
@@ -1196,6 +1276,9 @@ ${JSON.stringify(allStringsList, null, 2)}
 
       if (currentStep === 4) {
         document.getElementById('reviewWorkerName').innerText = document.getElementById('workerName').value || '-';
+        document.getElementById('reviewSource').textContent = document.getElementById('sourceTypeFile').checked
+          ? (document.getElementById('scriptFile').files[0]?.name || '-')
+          : document.getElementById('scriptUrl').value.trim();
         document.getElementById('reviewObfuscation').innerText = document.getElementById('enableObfuscation').checked ? 'فعال (رمزگذاری با XOR)' : 'غیرفعال (کد خام)';
         document.getElementById('reviewRecreate').innerText = document.getElementById('recreateWorker').checked ? 'نصب مجدد از صفر (Clean Rebuild)' : 'بروزرسانی مستقیم ورکر';
         const cDom = document.getElementById('customDomain').value.trim();
@@ -1215,10 +1298,14 @@ ${JSON.stringify(allStringsList, null, 2)}
         }
         saveOrClearCredentials();
       } else if (currentStep === 2) {
-        if (!document.getElementById('workerName').checkValidity() || !document.getElementById('scriptUrl').checkValidity()) {
-          alert('لطفاً نام ورکر و آدرس فایل کدهای اسکریپت را وارد کنید.');
+        if (!document.getElementById('workerName').checkValidity()) {
+          alert('لطفاً نام ورکر را وارد کنید.');
           return;
         }
+        const isFile = document.getElementById('sourceTypeFile').checked;
+        if (isFile) updateScriptFileInfo();
+        const sourceInput = document.getElementById(isFile ? 'scriptFile' : 'scriptUrl');
+        if (!sourceInput.reportValidity()) return;
       } else if (currentStep === 3) {
         if (document.getElementById('enableD1').checked) {
           if (!document.getElementById('d1Name').value.trim() || !document.getElementById('bindingName').value.trim()) {
@@ -1251,7 +1338,7 @@ ${JSON.stringify(allStringsList, null, 2)}
       const prevBtn = document.getElementById('prevBtn');
 
       output.className = 'mt-4 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed bg-slate-950 border border-slate-800 text-slate-300';
-      output.innerHTML = 'در حال ارتباط با بک‌اند کلودفلر، دانلود سورس و استقرار ورکر... لطفاً شکیبا باشید.';
+      output.innerText = 'در حال خواندن سورس و استقرار ورکر روی کلودفلر... لطفاً شکیبا باشید.';
       output.classList.remove('hidden');
 
       submitBtn.disabled = true;
@@ -1262,7 +1349,6 @@ ${JSON.stringify(allStringsList, null, 2)}
         accountId: document.getElementById('accountId').value.trim(),
         apiToken: document.getElementById('apiToken').value.trim(),
         workerName: document.getElementById('workerName').value.trim(),
-        scriptUrl: document.getElementById('scriptUrl').value.trim(),
         customDomain: document.getElementById('customDomain').value.trim() || null,
         enableObfuscation: document.getElementById('enableObfuscation').checked,
         recreateWorker: document.getElementById('recreateWorker').checked,
@@ -1273,6 +1359,7 @@ ${JSON.stringify(allStringsList, null, 2)}
       };
 
       try {
+        Object.assign(payload, await getWorkerSource());
         const response = await fetch('/api/deploy', {
           method: 'POST',
           headers: { 
@@ -1295,7 +1382,7 @@ ${JSON.stringify(allStringsList, null, 2)}
           // تعیین مسیر پنل بر اساس سورس کد یا متغیر بایندینگ
           let panelUrl = result.workerUrl;
           const currentBinding = document.getElementById('bindingName').value.trim();
-          const currentUrl = document.getElementById('scriptUrl').value.trim();
+          const currentUrl = payload.scriptUrl || document.getElementById('scriptFile').files[0]?.name || '';
 
           const isNahanMini = currentUrl.includes('NahanMini') || currentUrl.includes('nahanmini');
           const isNahan = !isNahanMini && (currentBinding === 'IOT_DB' || currentUrl.includes('nahan'));
